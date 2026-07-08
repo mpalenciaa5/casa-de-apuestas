@@ -88,9 +88,8 @@ export async function getNoSQLDB() {
     // production mode
     if (!clientPromise) {
       clientPromise = (async () => {
-        const finalUri = await resolveAndReconstructUri(uri);
-        console.log('[NoSQL Connection] Conectando a MongoDB Atlas...');
-        const client = new MongoClient(finalUri, options);
+        console.log('[NoSQL Connection] Conectando a MongoDB Atlas de forma directa...');
+        const client = new MongoClient(uri, options);
         return client.connect();
       })();
     }
