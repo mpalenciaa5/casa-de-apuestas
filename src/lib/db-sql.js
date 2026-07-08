@@ -10,6 +10,11 @@ if (!globalRef.dbPromise) {
   const password = process.env.MYSQL_PASSWORD === 'tu_contraseña_aqui' ? '' : (process.env.MYSQL_PASSWORD || '');
   const database = process.env.MYSQL_DATABASE || 'casa_apuestas';
 
+  // Aiven requires SSL mode. Check if we are running in cloud or locally.
+  // Standard local MySQL usually doesn't mandate SSL. Aiven hosts end in .aivencloud.com.
+  const isCloud = host.includes('aivencloud.com') || host.includes('database') || process.env.NODE_ENV === 'production';
+  const sslOptions = isCloud ? { rejectUnauthorized: false } : null;
+
   globalRef.dbPromise = (async () => {
     try {
       // 1. First connect without database selection to ensure the DB exists
@@ -17,7 +22,8 @@ if (!globalRef.dbPromise) {
         host,
         port,
         user,
-        password
+        password,
+        ssl: sslOptions
       });
 
       await initConnection.query(`CREATE DATABASE IF NOT EXISTS \`${database}\``);
@@ -30,6 +36,7 @@ if (!globalRef.dbPromise) {
         user,
         password,
         database,
+        ssl: sslOptions,
         waitForConnections: true,
         connectionLimit: 10,
         queueLimit: 0
@@ -93,8 +100,6 @@ if (!globalRef.dbPromise) {
       const dbWrapper = {
         // Wrapper for SQL execution (exec/run/all/get)
         async run(sql, params = []) {
-          // sqlite3 uses '?' placeholders which maps directly to mysql2
-          // But in SQLite db.run returns { lastID: x, changes: y }
           const formattedSql = sql.replace(/BEGIN TRANSACTION/i, 'START TRANSACTION');
           const [result] = await pool.execute(formattedSql, params);
           return {
@@ -111,7 +116,6 @@ if (!globalRef.dbPromise) {
           return rows[0] || null;
         },
         async exec(sql) {
-          // Splitting multi-statement queries to execute sequentially in MySQL
           const statements = sql
             .split(';')
             .map(s => s.trim())
@@ -121,7 +125,6 @@ if (!globalRef.dbPromise) {
           }
         },
         async configure(option, value) {
-          // SQLite config bypass (busyTimeout, etc.)
           return;
         }
       };
