@@ -1,6 +1,7 @@
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
 import Navbar from '@/components/Navbar';
+import Script from 'next/script';
 
 export const metadata = {
   title: 'ApexBet - Casa de Apuestas Premium',
@@ -30,6 +31,10 @@ export default function RootLayout({ children }) {
             </div>
           </footer>
         </AuthProvider>
+        <Script 
+          src="https://accounts.google.com/gsi/client" 
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );

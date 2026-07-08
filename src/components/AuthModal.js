@@ -16,6 +16,52 @@ export default function AuthModal() {
   const [loading, setLoading] = useState(false);
   const [showGoogleChooser, setShowGoogleChooser] = useState(false);
 
+  const handleGoogleCredentialResponse = async (response) => {
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential: response.credential, isDemo: false })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al autenticar con Google real.');
+      
+      window.location.reload();
+    } catch (err) {
+      setError(err.message);
+      setLoading(false);
+    }
+  };
+
+  // Initialize real Google Sign-In button when the modal is open
+  useEffect(() => {
+    if (!authModal || showGoogleChooser) return;
+
+    const initGoogleSignIn = () => {
+      if (typeof window !== 'undefined' && window.google) {
+        try {
+          window.google.accounts.id.initialize({
+            client_id: '717687016540-213lco9cfpupdoftvsp0adctnqvkbumb.apps.googleusercontent.com',
+            callback: handleGoogleCredentialResponse
+          });
+          window.google.accounts.id.renderButton(
+            document.getElementById('google-signin-btn-container'),
+            { theme: 'outline', size: 'large', width: 340, text: 'signin_with' }
+          );
+        } catch (err) {
+          console.error('Error rendering Google button:', err);
+        }
+      }
+    };
+
+    // Try immediately and also add a small timeout to let the gsi client script load
+    initGoogleSignIn();
+    const timer = setTimeout(initGoogleSignIn, 500);
+    return () => clearTimeout(timer);
+  }, [authModal, showGoogleChooser]);
+
   // Reset local states when modal toggles
   useEffect(() => {
     setError(null);
@@ -199,34 +245,16 @@ export default function AuthModal() {
               <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--border-color)' }} />
             </div>
 
-            <button 
-              type="button" 
-              className="btn" 
-              style={{ 
-                width: '100%', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center', 
-                gap: '10px', 
-                backgroundColor: '#fff', 
-                color: '#000', 
-                fontWeight: '700',
-                border: 'none',
-                height: '42px',
-                fontSize: '14px',
-                borderRadius: 'var(--radius-md)',
-                cursor: 'pointer'
-              }}
-              onClick={() => setShowGoogleChooser(true)}
-            >
-              <svg width="18" height="18" viewBox="0 0 18 18">
-                <path d="M17.64 9.2c0-.63-.06-1.25-.16-1.84H9v3.47h4.84a4.14 4.14 0 0 1-1.8 2.71v2.26h2.91c1.7-1.56 2.69-3.86 2.69-6.6z" fill="#4285F4" />
-                <path d="M9 18c2.43 0 4.47-.8 5.96-2.2l-2.91-2.26c-.8.54-1.85.87-3.05.87-2.34 0-4.33-1.58-5.03-3.7H1.02v2.33A9 9 0 0 0 9 18z" fill="#34A853" />
-                <path d="M3.97 10.71a5.4 5.4 0 0 1 0-3.42V4.96H1.02a9 9 0 0 0 0 8.08l2.95-2.33z" fill="#FBBC05" />
-                <path d="M9 3.58c1.32 0 2.5.45 3.44 1.35L15 2.4A9 9 0 0 0 1.02 4.96l2.95 2.33C4.67 5.16 6.66 3.58 9 3.58z" fill="#EA4335" />
-              </svg>
-              Acceso rápido con Google
-            </button>
+            {/* Official Google Identity Services button container */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', gap: '8px' }}>
+              <div id="google-signin-btn-container" style={{ minHeight: '40px', display: 'flex', justifyContent: 'center' }}></div>
+              <span 
+                onClick={() => setShowGoogleChooser(true)} 
+                style={{ fontSize: '12px', color: 'var(--accent-green)', cursor: 'pointer', textDecoration: 'underline', marginTop: '6px', fontWeight: '500' }}
+              >
+                Opciones alternativas de evaluación (Cuentas Demo)
+              </span>
+            </div>
 
             <div className="form-footer" style={{ marginTop: '20px' }}>
               {authModal === 'login' ? (
