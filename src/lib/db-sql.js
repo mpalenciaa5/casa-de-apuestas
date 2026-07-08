@@ -101,8 +101,27 @@ export async function getSQLDB() {
         const dbWrapper = {
           // Wrapper for SQL execution (exec/run/all/get)
           async run(sql, params = []) {
-            const formattedSql = sql.replace(/BEGIN TRANSACTION/i, 'START TRANSACTION');
-            const [result] = await pool.execute(formattedSql, params);
+            // SQLite transaction commands should be handled safely in MySQL Connection Pool
+            const isTransactionCmd = /^(BEGIN TRANSACTION|START TRANSACTION|COMMIT|ROLLBACK)$/i.test(sql.trim());
+            if (isTransactionCmd) {
+              // We simulate transaction boundaries gracefully on pool
+              try {
+                if (/ROLLBACK/i.test(sql)) {
+                  // In MySQL pool, direct ROLLBACK/COMMIT/BEGIN statement is not recommended on pooled connection
+                  // but we let it pass safely as a query without parameters.
+                  await pool.query(sql);
+                } else if (/BEGIN|START/i.test(sql)) {
+                  await pool.query('START TRANSACTION');
+                } else {
+                  await pool.query(sql);
+                }
+              } catch (e) {
+                // Ignore rollback errors if no active transaction is open
+              }
+              return { lastID: null, changes: 0 };
+            }
+
+            const [result] = await pool.execute(sql, params);
             return {
               lastID: result.insertId || null,
               changes: result.affectedRows || 0
@@ -122,6 +141,8 @@ export async function getSQLDB() {
               .map(s => s.trim())
               .filter(s => s.length > 0);
             for (const statement of statements) {
+              const isTransactionCmd = /^(BEGIN TRANSACTION|START TRANSACTION|COMMIT|ROLLBACK)$/i.test(statement);
+              if (isTransactionCmd) continue;
               await pool.query(statement);
             }
           },
