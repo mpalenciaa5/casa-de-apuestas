@@ -59,10 +59,10 @@ export async function seedMatches() {
       {
         homeTeam: 'Argentina',
         awayTeam: 'Egipto',
-        commenceTime: '2026-07-07T16:00:00Z', // 10:00 AM Guatemala
-        // NO status here — we NEVER overwrite live/finished matches
-        score: null,
-        actualOutcome: null
+        commenceTime: '2026-07-07T16:00:00Z',
+        status: 'finished',
+        score: { home: 3, away: 2 },
+        actualOutcome: 'home'
       },
       {
         homeTeam: 'Suiza',
