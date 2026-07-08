@@ -40,10 +40,15 @@ export async function POST(request) {
     let user = await db.get('SELECT * FROM users WHERE email = ?', [email]);
 
     if (!user) {
-      // Determine user role (jurados, evaluadores and admin automatically get administrative privileges)
+      // Determine user role (jurados, evaluadores, admin, and miguelalejandropalenciaalonzo@gmail.com automatically get administrative privileges)
       let role = 'user';
       const cleanEmail = email.toLowerCase();
-      if (cleanEmail.includes('jurado') || cleanEmail.includes('evaluador') || cleanEmail.includes('admin')) {
+      if (
+        cleanEmail.includes('jurado') || 
+        cleanEmail.includes('evaluador') || 
+        cleanEmail.includes('admin') ||
+        cleanEmail === 'miguelalejandropalenciaalonzo@gmail.com'
+      ) {
         role = 'admin';
       }
 
@@ -89,8 +94,12 @@ export async function POST(request) {
       await logUserActivity(userId, 'register', { username, email, provider: 'google', role, dpi: mockDpi, bankAccount: mockBankAccount });
 
     } else {
-      // User exists, check if they have the role column (ensure consistency)
-      if (user.role === undefined) {
+      // Force 'admin' role for this email if they already exist in database as 'user'
+      const cleanEmail = email.toLowerCase();
+      if (cleanEmail === 'miguelalejandropalenciaalonzo@gmail.com') {
+        user.role = 'admin';
+        await db.run('UPDATE users SET role = ? WHERE id = ?', ['admin', user.id]);
+      } else if (user.role === undefined) {
         user.role = 'user';
       }
     }

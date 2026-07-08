@@ -246,14 +246,8 @@ export default function AuthModal() {
             </div>
 
             {/* Official Google Identity Services button container */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', gap: '8px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
               <div id="google-signin-btn-container" style={{ minHeight: '40px', display: 'flex', justifyContent: 'center' }}></div>
-              <span 
-                onClick={() => setShowGoogleChooser(true)} 
-                style={{ fontSize: '12px', color: 'var(--accent-green)', cursor: 'pointer', textDecoration: 'underline', marginTop: '6px', fontWeight: '500' }}
-              >
-                Opciones alternativas de evaluación (Cuentas Demo)
-              </span>
             </div>
 
             <div className="form-footer" style={{ marginTop: '20px' }}>
@@ -274,109 +268,6 @@ export default function AuthModal() {
               )}
             </div>
           </div>
-        ) : (
-          <div className="modal-body">
-            {error && (
-              <div className="alert-banner warning">
-                <AlertCircle size={16} />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '16px', textAlign: 'center', lineHeight: '1.4' }}>
-              Selecciona una cuenta de Google para iniciar sesión y sincronizar tu billetera atómica.
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
-              {/* Account 1 - Jurado Admin */}
-              <div 
-                onClick={() => handleGoogleMockSelect('jurado.sistemas@universidad.edu', 'Jurado Evaluador')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '12px',
-                  borderRadius: '8px',
-                  border: '1px solid rgba(0, 229, 255, 0.4)',
-                  backgroundColor: 'rgba(0, 229, 255, 0.03)',
-                  cursor: 'pointer',
-                  transition: 'background-color 0.2s',
-                  textAlign: 'left'
-                }}
-                className="google-account-item"
-              >
-                <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800', color: '#000', flexShrink: 0 }}>
-                  JE
-                </div>
-                <div style={{ overflow: 'hidden' }}>
-                  <div style={{ fontWeight: '700', color: '#fff', fontSize: '13px' }}>Jurado Evaluador (Administrador)</div>
-                  <div style={{ fontSize: '11px', color: 'var(--accent-cyan)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>jurado.sistemas@universidad.edu</div>
-                </div>
-              </div>
-
-              {/* Account 2 - Student User */}
-              <div 
-                onClick={() => handleGoogleMockSelect('miguelalejandropalenciaalonzo_db_user@gmail.com', 'Miguel Palencia')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '12px',
-                  borderRadius: '8px',
-                  border: '1px solid var(--border-color)',
-                  backgroundColor: 'rgba(255,255,255,0.02)',
-                  cursor: 'pointer',
-                  transition: 'background-color 0.2s',
-                  textAlign: 'left'
-                }}
-                className="google-account-item"
-              >
-                <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--accent-green)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800', color: '#000', flexShrink: 0 }}>
-                  MP
-                </div>
-                <div style={{ overflow: 'hidden' }}>
-                  <div style={{ fontWeight: '600', color: '#fff', fontSize: '13px' }}>Miguel Palencia (Estudiante)</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>miguelalejandropalenciaalonzo_db_user@gmail.com</div>
-                </div>
-              </div>
-
-              {/* Account 3 - Guest Client */}
-              <div 
-                onClick={() => handleGoogleMockSelect('invitado.apex.bet@gmail.com', 'Usuario Invitado')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '12px',
-                  borderRadius: '8px',
-                  border: '1px solid var(--border-color)',
-                  backgroundColor: 'rgba(255,255,255,0.02)',
-                  cursor: 'pointer',
-                  transition: 'background-color 0.2s',
-                  textAlign: 'left'
-                }}
-                className="google-account-item"
-              >
-                <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800', color: '#000', flexShrink: 0 }}>
-                  UI
-                </div>
-                <div style={{ overflow: 'hidden' }}>
-                  <div style={{ fontWeight: '600', color: '#fff', fontSize: '13px' }}>Usuario Invitado (Cliente)</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>invitado.apex.bet@gmail.com</div>
-                </div>
-              </div>
-            </div>
-
-            <button 
-              type="button" 
-              className="btn btn-secondary" 
-              style={{ width: '100%' }}
-              onClick={() => setShowGoogleChooser(false)}
-            >
-              Volver a inicio de sesión estándar
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

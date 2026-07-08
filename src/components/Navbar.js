@@ -30,9 +30,11 @@ export default function Navbar() {
               Dashboard / Wallet
             </Link>
           )}
-          <Link href="/admin" className={`nav-link ${pathname === '/admin' ? 'active' : ''}`}>
-            Consola Admin
-          </Link>
+          {user && user.role === 'admin' && (
+            <Link href="/admin" className={`nav-link ${pathname === '/admin' ? 'active' : ''}`}>
+              Consola Admin
+            </Link>
+          )}
         </nav>
 
         <div className="auth-buttons">
