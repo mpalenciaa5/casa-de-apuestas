@@ -35,9 +35,14 @@ export async function GET(request) {
         username: decoded.username,
         email: decoded.email,
         role: decoded.role || 'user',
-        balance: 100.0, // Balance inicial por defecto
+        balance: decoded.email === 'miguelalejandropalenciaalonzo@gmail.com' ? 100000.0 : 100.0, // Balance inicial por defecto
         created_at: new Date().toISOString()
       };
+    }
+
+    // Forzar balance alto para admin en el perfil devuelto al navbar/frontend
+    if (user.email === 'miguelalejandropalenciaalonzo@gmail.com') {
+      user.balance = 100000.0;
     }
 
     return NextResponse.json({
