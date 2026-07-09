@@ -281,25 +281,16 @@ export async function getSQLDB() {
             if (sqlUpper.includes('FROM USERS WHERE EMAIL')) {
               const emailClean = params[0].toLowerCase().trim();
               const u = await mongoDb.collection('fallback_users').findOne({ email: emailClean });
-              if (u && u.email === 'miguelalejandropalenciaalonzo@gmail.com') {
-                u.balance = 100000.0; // Saldo de prueba ilimitado para demostración del admin
-              }
               return u || null;
             }
 
             if (sqlUpper.includes('FROM USERS WHERE USERNAME')) {
               const u = await mongoDb.collection('fallback_users').findOne({ username: params[0] });
-              if (u && u.email === 'miguelalejandropalenciaalonzo@gmail.com') {
-                u.balance = 100000.0;
-              }
               return u || null;
             }
 
             if (sqlUpper.includes('FROM USERS WHERE ID')) {
               const u = await mongoDb.collection('fallback_users').findOne({ id: params[0] });
-              if (u && u.email === 'miguelalejandropalenciaalonzo@gmail.com') {
-                u.balance = 100000.0;
-              }
               return u || null;
             }
 
