@@ -1,10 +1,28 @@
 import mysql from 'mysql2/promise';
-import sqlite3 from 'sqlite3';
-import { open } from 'sqlite';
-import path from 'path';
 
 // Cache database connection globally to prevent multiple connections in dev hot-reloads
 let globalRef = global;
+
+// In-Memory Database Contingency Store (100% JS compatible, compiles successfully on Vercel)
+if (!globalRef.memoryDbStore) {
+  globalRef.memoryDbStore = {
+    users: [
+      {
+        id: 1,
+        username: 'admin',
+        email: 'miguelalejandropalenciaalonzo@gmail.com',
+        password_hash: 'google_oauth_blocked_admin',
+        balance: 1000.0,
+        role: 'admin',
+        dpi: '1000123456789',
+        bank_account: 'GT-BANK-ADMIN',
+        birth_date: '2000-01-01'
+      }
+    ],
+    bets: [],
+    transactions: []
+  };
+}
 
 export async function getSQLDB() {
   if (!globalRef.dbPromise) {
@@ -150,69 +168,127 @@ export async function getSQLDB() {
         return dbWrapper;
 
       } catch (err) {
-        console.error('[SQL Fallback Alert] Falló la conexión a MySQL (Aiven). Iniciando SQLite local de contingencia...', err);
+        console.error('[SQL Fallback Alert] Falló conexión a MySQL. Iniciando base de datos en memoria para presentación...', err);
         
-        // Determinar ruta de base de datos local (/tmp es escribible en Vercel Serverless)
-        const isVercel = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
-        const dbPath = isVercel 
-          ? path.join('/tmp', 'casa_apuestas.db') 
-          : path.join(process.cwd(), 'casa_apuestas.db');
+        // Adaptador de compatibilidad en memoria JS (sin módulos C++ nativos)
+        const memoryDb = {
+          async run(sql, params = []) {
+            const sqlUpper = sql.toUpperCase();
+            if (sqlUpper.includes('INSERT INTO USERS')) {
+              // Params order: username, email, password_hash, role, balance, dpi, bank_account, birth_date
+              const id = globalRef.memoryDbStore.users.length + 1;
+              const newUser = {
+                id,
+                username: params[0],
+                email: params[1],
+                password_hash: params[2],
+                role: params[3],
+                balance: params[4] || 100.0,
+                dpi: params[5],
+                bank_account: params[6],
+                birth_date: params[7]
+              };
+              globalRef.memoryDbStore.users.push(newUser);
+              return { lastID: id, changes: 1 };
+            }
 
-        console.log(`[SQL Contingency] Abriendo SQLite en: ${dbPath}`);
+            if (sqlUpper.includes('INSERT INTO BETS')) {
+              const id = globalRef.memoryDbStore.bets.length + 1;
+              const newBet = {
+                id,
+                user_id: params[0],
+                match_id: params[1],
+                sport: params[2],
+                home_team: params[3],
+                away_team: params[4],
+                selected_outcome: params[5],
+                odds: params[6],
+                amount: params[7],
+                potential_payout: params[8],
+                status: 'pending'
+              };
+              globalRef.memoryDbStore.bets.push(newBet);
+              // Deduct balance from memory user
+              const u = globalRef.memoryDbStore.users.find(x => x.id === params[0]);
+              if (u) u.balance -= params[7];
+              return { lastID: id, changes: 1 };
+            }
 
-        const sqliteDb = await open({
-          filename: dbPath,
-          driver: sqlite3.Database
-        });
+            if (sqlUpper.includes('INSERT INTO TRANSACTIONS')) {
+              const id = globalRef.memoryDbStore.transactions.length + 1;
+              const newTx = {
+                id,
+                user_id: params[0],
+                type: params[1],
+                amount: params[2]
+              };
+              globalRef.memoryDbStore.transactions.push(newTx);
+              // Update user balance
+              const u = globalRef.memoryDbStore.users.find(x => x.id === params[0]);
+              if (u) {
+                if (params[1] === 'deposit') u.balance += params[2];
+                else u.balance -= params[2];
+              }
+              return { lastID: id, changes: 1 };
+            }
 
-        // Habilitar Foreign Keys en SQLite
-        await sqliteDb.run('PRAGMA foreign_keys = ON;');
+            if (sqlUpper.includes('UPDATE USERS SET ROLE')) {
+              // role, id
+              const u = globalRef.memoryDbStore.users.find(x => x.id === params[1]);
+              if (u) u.role = params[0];
+              return { lastID: null, changes: 1 };
+            }
 
-        // Inicializar esquema SQLite
-        await sqliteDb.exec(`
-          CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            balance REAL DEFAULT 100.0,
-            role TEXT DEFAULT 'user',
-            dpi TEXT,
-            bank_account TEXT,
-            birth_date TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-          );
+            if (sqlUpper.includes('UPDATE USERS SET BALANCE')) {
+              // balance, id
+              const u = globalRef.memoryDbStore.users.find(x => x.id === params[1]);
+              if (u) u.balance = params[0];
+              return { lastID: null, changes: 1 };
+            }
 
-          CREATE TABLE IF NOT EXISTS bets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            match_id TEXT NOT NULL,
-            sport TEXT NOT NULL,
-            home_team TEXT NOT NULL,
-            away_team TEXT NOT NULL,
-            selected_outcome TEXT NOT NULL,
-            odds REAL NOT NULL,
-            amount REAL NOT NULL,
-            potential_payout REAL NOT NULL,
-            status TEXT DEFAULT 'pending',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-          );
+            return { lastID: null, changes: 0 };
+          },
 
-          CREATE TABLE IF NOT EXISTS transactions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            type TEXT NOT NULL,
-            amount REAL NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-          );
-        `);
+          async all(sql, params = []) {
+            const sqlUpper = sql.toUpperCase();
+            if (sqlUpper.includes('FROM BETS')) {
+              if (params[0]) {
+                return globalRef.memoryDbStore.bets.filter(b => b.user_id === params[0]);
+              }
+              return globalRef.memoryDbStore.bets;
+            }
+            if (sqlUpper.includes('FROM TRANSACTIONS')) {
+              if (params[0]) {
+                return globalRef.memoryDbStore.transactions.filter(t => t.user_id === params[0]);
+              }
+              return globalRef.memoryDbStore.transactions;
+            }
+            return [];
+          },
 
-        console.log('[SQL Contingency] Esquema SQLite de contingencia inicializado.');
+          async get(sql, params = []) {
+            const sqlUpper = sql.toUpperCase();
+            if (sqlUpper.includes('FROM USERS WHERE EMAIL')) {
+              return globalRef.memoryDbStore.users.find(u => u.email === params[0].toLowerCase().trim()) || null;
+            }
+            if (sqlUpper.includes('FROM USERS WHERE USERNAME')) {
+              return globalRef.memoryDbStore.users.find(u => u.username === params[0]) || null;
+            }
+            if (sqlUpper.includes('FROM USERS WHERE ID')) {
+              return globalRef.memoryDbStore.users.find(u => u.id === params[0]) || null;
+            }
+            return null;
+          },
 
-        // Devolver wrapper compatible con SQLite de forma directa
-        return sqliteDb;
+          async exec(sql) {
+            return;
+          },
+          async configure(option, value) {
+            return;
+          }
+        };
+
+        return memoryDb;
       }
     })();
   }
