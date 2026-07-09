@@ -1,28 +1,8 @@
 import mysql from 'mysql2/promise';
+import { getNoSQLDB } from './db-nosql';
 
 // Cache database connection globally to prevent multiple connections in dev hot-reloads
 let globalRef = global;
-
-// In-Memory Database Contingency Store (100% JS compatible, compiles successfully on Vercel)
-if (!globalRef.memoryDbStore) {
-  globalRef.memoryDbStore = {
-    users: [
-      {
-        id: 1,
-        username: 'admin',
-        email: 'miguelalejandropalenciaalonzo@gmail.com',
-        password_hash: 'google_oauth_blocked_admin',
-        balance: 1000.0,
-        role: 'admin',
-        dpi: '1000123456789',
-        bank_account: 'GT-BANK-ADMIN',
-        birth_date: '2000-01-01'
-      }
-    ],
-    bets: [],
-    transactions: []
-  };
-}
 
 export async function getSQLDB() {
   if (!globalRef.dbPromise) {
@@ -168,32 +148,43 @@ export async function getSQLDB() {
         return dbWrapper;
 
       } catch (err) {
-        console.error('[SQL Fallback Alert] Falló conexión a MySQL. Iniciando base de datos en memoria para presentación...', err);
+        console.error('[SQL Fallback Alert] Falló conexión a MySQL. Iniciando base de datos persistente en MongoDB Atlas...', err);
         
-        // Adaptador de compatibilidad en memoria JS (sin módulos C++ nativos)
-        const memoryDb = {
+        // Conexión a MongoDB Atlas para persistir de manera real los datos de contingencia
+        const mongoDb = await getNoSQLDB();
+
+        const mongoDbWrapper = {
           async run(sql, params = []) {
             const sqlUpper = sql.toUpperCase();
+            
             if (sqlUpper.includes('INSERT INTO USERS')) {
-              // Params order: username, email, password_hash, role, balance, dpi, bank_account, birth_date
-              const id = globalRef.memoryDbStore.users.length + 1;
+              // Params: username, email, password_hash, role, balance, dpi, bank_account, birth_date
+              // Buscamos un ID secuencial autoincrementable para simular SQL
+              const count = await mongoDb.collection('fallback_users').countDocuments();
+              const id = count + 1;
+              
               const newUser = {
                 id,
                 username: params[0],
-                email: params[1],
+                email: params[1].toLowerCase().trim(),
                 password_hash: params[2],
                 role: params[3],
-                balance: params[4] || 100.0,
+                balance: params[4] !== undefined ? params[4] : 100.0,
                 dpi: params[5],
                 bank_account: params[6],
-                birth_date: params[7]
+                birth_date: params[7],
+                created_at: new Date()
               };
-              globalRef.memoryDbStore.users.push(newUser);
+
+              await mongoDb.collection('fallback_users').insertOne(newUser);
               return { lastID: id, changes: 1 };
             }
 
             if (sqlUpper.includes('INSERT INTO BETS')) {
-              const id = globalRef.memoryDbStore.bets.length + 1;
+              // Params: user_id, match_id, sport, home_team, away_team, selected_outcome, odds, amount, potential_payout
+              const count = await mongoDb.collection('fallback_bets').countDocuments();
+              const id = count + 1;
+
               const newBet = {
                 id,
                 user_id: params[0],
@@ -205,44 +196,61 @@ export async function getSQLDB() {
                 odds: params[6],
                 amount: params[7],
                 potential_payout: params[8],
-                status: 'pending'
+                status: 'pending',
+                created_at: new Date()
               };
-              globalRef.memoryDbStore.bets.push(newBet);
-              // Deduct balance from memory user
-              const u = globalRef.memoryDbStore.users.find(x => x.id === params[0]);
-              if (u) u.balance -= params[7];
+
+              await mongoDb.collection('fallback_bets').insertOne(newBet);
+              
+              // Descontar saldo del usuario en MongoDB
+              await mongoDb.collection('fallback_users').updateOne(
+                { id: params[0] },
+                { $inc: { balance: -params[7] } }
+              );
+
               return { lastID: id, changes: 1 };
             }
 
             if (sqlUpper.includes('INSERT INTO TRANSACTIONS')) {
-              const id = globalRef.memoryDbStore.transactions.length + 1;
+              // Params: user_id, type, amount
+              const count = await mongoDb.collection('fallback_transactions').countDocuments();
+              const id = count + 1;
+
               const newTx = {
                 id,
                 user_id: params[0],
                 type: params[1],
-                amount: params[2]
+                amount: params[2],
+                created_at: new Date()
               };
-              globalRef.memoryDbStore.transactions.push(newTx);
-              // Update user balance
-              const u = globalRef.memoryDbStore.users.find(x => x.id === params[0]);
-              if (u) {
-                if (params[1] === 'deposit') u.balance += params[2];
-                else u.balance -= params[2];
-              }
+
+              await mongoDb.collection('fallback_transactions').insertOne(newTx);
+
+              // Actualizar balance del usuario en MongoDB
+              const amountChange = params[1] === 'deposit' ? params[2] : params[2];
+              await mongoDb.collection('fallback_users').updateOne(
+                { id: params[0] },
+                { $inc: { balance: amountChange } }
+              );
+
               return { lastID: id, changes: 1 };
             }
 
             if (sqlUpper.includes('UPDATE USERS SET ROLE')) {
-              // role, id
-              const u = globalRef.memoryDbStore.users.find(x => x.id === params[1]);
-              if (u) u.role = params[0];
+              // Params: role, id
+              await mongoDb.collection('fallback_users').updateOne(
+                { id: params[1] },
+                { $set: { role: params[0] } }
+              );
               return { lastID: null, changes: 1 };
             }
 
             if (sqlUpper.includes('UPDATE USERS SET BALANCE')) {
-              // balance, id
-              const u = globalRef.memoryDbStore.users.find(x => x.id === params[1]);
-              if (u) u.balance = params[0];
+              // Params: balance, id
+              await mongoDb.collection('fallback_users').updateOne(
+                { id: params[1] },
+                { $set: { balance: params[0] } }
+              );
               return { lastID: null, changes: 1 };
             }
 
@@ -251,48 +259,41 @@ export async function getSQLDB() {
 
           async all(sql, params = []) {
             const sqlUpper = sql.toUpperCase();
+            
             if (sqlUpper.includes('FROM BETS')) {
-              if (params[0]) {
-                return globalRef.memoryDbStore.bets.filter(b => b.user_id === params[0]);
-              }
-              return globalRef.memoryDbStore.bets;
+              const query = params[0] ? { user_id: params[0] } : {};
+              const list = await mongoDb.collection('fallback_bets').find(query).sort({ created_at: -1 }).toArray();
+              return list;
             }
+
             if (sqlUpper.includes('FROM TRANSACTIONS')) {
-              if (params[0]) {
-                return globalRef.memoryDbStore.transactions.filter(t => t.user_id === params[0]);
-              }
-              return globalRef.memoryDbStore.transactions;
+              const query = params[0] ? { user_id: params[0] } : {};
+              const list = await mongoDb.collection('fallback_transactions').find(query).sort({ created_at: -1 }).toArray();
+              return list;
             }
+
             return [];
           },
 
           async get(sql, params = []) {
             const sqlUpper = sql.toUpperCase();
+
             if (sqlUpper.includes('FROM USERS WHERE EMAIL')) {
-              return globalRef.memoryDbStore.users.find(u => u.email === params[0].toLowerCase().trim()) || null;
+              const emailClean = params[0].toLowerCase().trim();
+              const u = await mongoDb.collection('fallback_users').findOne({ email: emailClean });
+              return u || null;
             }
+
             if (sqlUpper.includes('FROM USERS WHERE USERNAME')) {
-              return globalRef.memoryDbStore.users.find(u => u.username === params[0]) || null;
+              const u = await mongoDb.collection('fallback_users').findOne({ username: params[0] });
+              return u || null;
             }
+
             if (sqlUpper.includes('FROM USERS WHERE ID')) {
-              let u = globalRef.memoryDbStore.users.find(x => x.id === params[0]);
-              if (!u) {
-                // Auto-crear usuario en el almacén de memoria para evitar caídas por reinicio de Serverless Lambdas
-                u = {
-                  id: params[0],
-                  username: `usuario_${params[0]}`,
-                  email: `user_${params[0]}@gmail.com`,
-                  password_hash: 'google_oauth_blocked_session',
-                  balance: 1000.0, // Saldo inicial para apuestas en modo contingencia
-                  role: 'user',
-                  dpi: '1000' + Math.floor(100000000 + Math.random() * 900000000),
-                  bank_account: 'GT-BANK-' + Math.floor(100000000 + Math.random() * 900000000),
-                  birth_date: '2000-01-01'
-                };
-                globalRef.memoryDbStore.users.push(u);
-              }
-              return u;
+              const u = await mongoDb.collection('fallback_users').findOne({ id: params[0] });
+              return u || null;
             }
+
             return null;
           },
 
@@ -304,7 +305,7 @@ export async function getSQLDB() {
           }
         };
 
-        return memoryDb;
+        return mongoDbWrapper;
       }
     })();
   }
