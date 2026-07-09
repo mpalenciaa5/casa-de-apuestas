@@ -1,4 +1,7 @@
 import mysql from 'mysql2/promise';
+import sqlite3 from 'sqlite3';
+import { open } from 'sqlite';
+import path from 'path';
 
 // Cache database connection globally to prevent multiple connections in dev hot-reloads
 let globalRef = global;
@@ -11,13 +14,13 @@ export async function getSQLDB() {
     const password = process.env.MYSQL_PASSWORD === 'tu_contraseña_aqui' ? '' : (process.env.MYSQL_PASSWORD || '');
     const database = process.env.MYSQL_DATABASE || 'casa_apuestas';
 
-    // Aiven requires SSL mode. Check if we are running in cloud or locally.
-    // Standard local MySQL usually doesn't mandate SSL. Aiven hosts end in .aivencloud.com.
     const isCloud = host.includes('aivencloud.com') || host.includes('database') || process.env.NODE_ENV === 'production';
     const sslOptions = isCloud ? { rejectUnauthorized: false } : null;
 
     globalRef.dbPromise = (async () => {
       try {
+        console.log(`[SQL Connect] Intentando conectar a MySQL Host: ${host}:${port}...`);
+        
         // 1. First connect without database selection to ensure the DB exists
         const initConnection = await mysql.createConnection({
           host,
@@ -99,25 +102,18 @@ export async function getSQLDB() {
 
         // 4. Wrap the pool in a compatibility layer to mimic SQLite's API
         const dbWrapper = {
-          // Wrapper for SQL execution (exec/run/all/get)
           async run(sql, params = []) {
-            // SQLite transaction commands should be handled safely in MySQL Connection Pool
             const isTransactionCmd = /^(BEGIN TRANSACTION|START TRANSACTION|COMMIT|ROLLBACK)$/i.test(sql.trim());
             if (isTransactionCmd) {
-              // We simulate transaction boundaries gracefully on pool
               try {
                 if (/ROLLBACK/i.test(sql)) {
-                  // In MySQL pool, direct ROLLBACK/COMMIT/BEGIN statement is not recommended on pooled connection
-                  // but we let it pass safely as a query without parameters.
                   await pool.query(sql);
                 } else if (/BEGIN|START/i.test(sql)) {
                   await pool.query('START TRANSACTION');
                 } else {
                   await pool.query(sql);
                 }
-              } catch (e) {
-                // Ignore rollback errors if no active transaction is open
-              }
+              } catch (e) {}
               return { lastID: null, changes: 0 };
             }
 
@@ -154,8 +150,69 @@ export async function getSQLDB() {
         return dbWrapper;
 
       } catch (err) {
-        console.error('Failed to connect to MySQL database:', err);
-        throw err;
+        console.error('[SQL Fallback Alert] Falló la conexión a MySQL (Aiven). Iniciando SQLite local de contingencia...', err);
+        
+        // Determinar ruta de base de datos local (/tmp es escribible en Vercel Serverless)
+        const isVercel = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
+        const dbPath = isVercel 
+          ? path.join('/tmp', 'casa_apuestas.db') 
+          : path.join(process.cwd(), 'casa_apuestas.db');
+
+        console.log(`[SQL Contingency] Abriendo SQLite en: ${dbPath}`);
+
+        const sqliteDb = await open({
+          filename: dbPath,
+          driver: sqlite3.Database
+        });
+
+        // Habilitar Foreign Keys en SQLite
+        await sqliteDb.run('PRAGMA foreign_keys = ON;');
+
+        // Inicializar esquema SQLite
+        await sqliteDb.exec(`
+          CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            balance REAL DEFAULT 100.0,
+            role TEXT DEFAULT 'user',
+            dpi TEXT,
+            bank_account TEXT,
+            birth_date TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+
+          CREATE TABLE IF NOT EXISTS bets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            match_id TEXT NOT NULL,
+            sport TEXT NOT NULL,
+            home_team TEXT NOT NULL,
+            away_team TEXT NOT NULL,
+            selected_outcome TEXT NOT NULL,
+            odds REAL NOT NULL,
+            amount REAL NOT NULL,
+            potential_payout REAL NOT NULL,
+            status TEXT DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+          );
+
+          CREATE TABLE IF NOT EXISTS transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            type TEXT NOT NULL,
+            amount REAL NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+          );
+        `);
+
+        console.log('[SQL Contingency] Esquema SQLite de contingencia inicializado.');
+
+        // Devolver wrapper compatible con SQLite de forma directa
+        return sqliteDb;
       }
     })();
   }
