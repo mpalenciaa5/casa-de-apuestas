@@ -140,7 +140,7 @@ export async function POST(request) {
   } catch (error) {
     console.error('Error in POST /api/auth/google:', error);
     return NextResponse.json(
-      { error: 'Error al autenticar con el proveedor de Google.' },
+      { error: `Error de servidor: ${error.message}` },
       { status: 500 }
     );
   }
